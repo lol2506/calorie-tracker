@@ -19,11 +19,13 @@ def get_current_user(
     token = credentials.credentials
     
     # Verify and decode token
-    payload = verify_token(token)
-    if payload is None:
+    try:
+        payload = verify_token(token)
+    except Exception as e:
+        # Catch JWTError (and others) and provide detail
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail=f"Invalid authentication credentials: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
     

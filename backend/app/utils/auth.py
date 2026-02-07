@@ -38,11 +38,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def verify_token(token: str) -> Optional[dict]:
+def verify_token(token: str) -> dict:
     """Verify and decode a JWT token"""
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload
-    except JWTError as e:
-        print(f"JWT verification failed: {e}")
-        return None
+    return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
