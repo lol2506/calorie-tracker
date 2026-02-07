@@ -2,32 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
-from .routes import auth, users, foods, meals
+from .routes import auth, users, foods, meals, seed
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="Calorie Tracker API",
-    description="API for tracking calorie intake from Indian foods",
-    version="1.0.0"
-)
-
-# Configure CORS - allow all origins for public API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,  # Must be False when using "*"
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ...
 
 # Include routers
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(foods.router)
 app.include_router(meals.router)
+app.include_router(seed.router)
 
 
 @app.get("/")
