@@ -107,10 +107,22 @@ async function apiRequest<T>(
         (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        ...options,
-        headers,
-    });
+    let response: Response;
+
+    try {
+        response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            ...options,
+            headers,
+        });
+    } catch (networkError) {
+        // Network error - could be CORS, connection refused, or offline
+        console.error("Network error:", networkError);
+        const error: ApiError = {
+            message: "Unable to connect to server. The backend may be starting up (wait 30s and retry) or there's a network issue.",
+            status: 0,
+        };
+        throw error;
+    }
 
     if (!response.ok) {
         let errorMessage = "An error occurred";
@@ -119,6 +131,15 @@ async function apiRequest<T>(
             errorMessage = errorData.detail || errorData.message || errorMessage;
         } catch {
             errorMessage = response.statusText || errorMessage;
+        }
+
+        // Add helpful context for common errors
+        if (response.status === 500) {
+            errorMessage = "Server error. The backend may have a database issue. Please try again later.";
+        } else if (response.status === 401) {
+            errorMessage = "Invalid email or password.";
+        } else if (response.status === 400 && errorMessage.includes("already registered")) {
+            errorMessage = "This email is already registered. Please login instead.";
         }
 
         const error: ApiError = {
