@@ -1,11 +1,9 @@
 "use client";
 
-import React from "react"
-
-import { useState } from "react";
-import { useAppStore } from "@/lib/store";
+import React, { useEffect, useState, useCallback } from "react";
+import { useAppStore, type Food, type MealType } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Search, Camera, Zap, X } from "lucide-react";
+import { ArrowLeft, Search, Camera, Zap, X, Loader2, Minus, Plus } from "lucide-react";
 
 type Tab = "search" | "photo" | "quick";
 
@@ -15,50 +13,80 @@ const quickAddOptions = [
   { label: "Large meal", description: "Full plate", calories: 700 },
 ];
 
-const portionSizes = [
-  "1 piece",
-  "1 bowl",
-  "1 plate",
-  "Half portion",
-  "1 cup",
-  "1 roti",
-  "2 slices",
-];
-
-const popularFoods = [
-  { name: "Banana", calories: 105, portion: "1 medium" },
-  { name: "Chicken Breast", calories: 165, portion: "100g" },
-  { name: "Rice", calories: 130, portion: "1 bowl" },
-  { name: "Roti / Chapati", calories: 70, portion: "1 piece" },
-  { name: "Dal", calories: 150, portion: "1 bowl" },
-  { name: "Egg", calories: 78, portion: "1 whole" },
-  { name: "Apple", calories: 95, portion: "1 medium" },
-  { name: "Toast with Butter", calories: 120, portion: "1 slice" },
-  { name: "Coffee with Milk", calories: 50, portion: "1 cup" },
-  { name: "Samosa", calories: 260, portion: "1 piece" },
-  { name: "Paneer Curry", calories: 300, portion: "1 bowl" },
-  { name: "Salad", calories: 100, portion: "1 bowl" },
-];
-
 export function AddFoodScreen() {
-  const { selectedMeal, setScreen, addFoodEntry } = useAppStore();
+  const {
+    selectedMeal,
+    setScreen,
+    addFoodEntry,
+    addMealToBackend,
+    fetchFoods,
+    backendFoods,
+    isLoading,
+    error,
+    isAuthenticated,
+  } = useAppStore();
+
   const [activeTab, setActiveTab] = useState<Tab>("search");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedPortion, setSelectedPortion] = useState<string | null>(null);
+  const [selectedFood, setSelectedFood] = useState<Food | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [isAddingMeal, setIsAddingMeal] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
-  const filteredFoods = searchQuery
-    ? popularFoods.filter((food) =>
-        food.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : popularFoods;
+  // Fetch foods on mount
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchFoods();
+    }
+  }, [isAuthenticated, fetchFoods]);
 
-  const handleAddFood = (name: string, calories: number, portion?: string) => {
-    addFoodEntry({
-      name,
-      calories,
-      meal: selectedMeal,
-      portion,
-    });
+  // Debounced search
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    if (isAuthenticated) {
+      const timeout = setTimeout(() => {
+        fetchFoods(query || undefined);
+      }, 300);
+
+      setSearchTimeout(timeout);
+    }
+  }, [isAuthenticated, fetchFoods, searchTimeout]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchTimeout]);
+
+  const handleAddFood = async (food: Food) => {
+    if (isAuthenticated) {
+      setIsAddingMeal(true);
+      try {
+        await addMealToBackend(food.id, selectedMeal, quantity);
+        setSelectedFood(null);
+        setQuantity(1);
+      } catch {
+        // Error handled in store
+      } finally {
+        setIsAddingMeal(false);
+      }
+    } else {
+      // Fallback to local entry for unauthenticated users
+      addFoodEntry({
+        name: food.name,
+        calories: food.calories_per_unit * quantity,
+        meal: selectedMeal,
+        portion: `${quantity} ${food.unit_type}`,
+      });
+    }
   };
 
   const handleQuickAdd = (calories: number, label: string) => {
@@ -69,7 +97,17 @@ export function AddFoodScreen() {
     });
   };
 
-  const mealLabels = {
+  const handleSelectFood = (food: Food) => {
+    setSelectedFood(food);
+    setQuantity(1);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedFood(null);
+    setQuantity(1);
+  };
+
+  const mealLabels: Record<MealType, string> = {
     breakfast: "Breakfast",
     lunch: "Lunch",
     snacks: "Snacks",
@@ -81,6 +119,11 @@ export function AddFoodScreen() {
     { id: "photo", label: "Photo", icon: Camera },
     { id: "quick", label: "Quick Add", icon: Zap },
   ];
+
+  // Filter foods based on search query (client-side fallback)
+  const displayedFoods = searchQuery && backendFoods.length === 0
+    ? backendFoods
+    : backendFoods;
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -131,14 +174,14 @@ export function AddFoodScreen() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search for food..."
+                placeholder="Search Indian foods..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearch(e.target.value)}
                 className="w-full h-14 pl-12 pr-4 bg-card border border-border rounded-2xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
               />
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery("")}
+                  onClick={() => handleSearch("")}
                   className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
                 >
                   <X className="w-4 h-4" />
@@ -146,28 +189,60 @@ export function AddFoodScreen() {
               )}
             </div>
 
+            {/* Error Display */}
+            {error && (
+              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl">
+                <p className="text-destructive text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Loading State */}
+            {isLoading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+              </div>
+            )}
+
             {/* Food List */}
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground px-1">
-                {searchQuery ? "Results" : "Popular foods"}
-              </p>
-              {filteredFoods.map((food, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleAddFood(food.name, food.calories, food.portion)}
-                  className="w-full p-4 bg-card border border-border rounded-2xl flex items-center justify-between hover:border-primary/50 transition-colors text-left"
-                >
-                  <div>
-                    <p className="font-medium text-foreground">{food.name}</p>
-                    <p className="text-sm text-muted-foreground">{food.portion}</p>
+            {!isLoading && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground px-1">
+                  {searchQuery ? `Results for "${searchQuery}"` : `Indian Foods (${displayedFoods.length})`}
+                </p>
+
+                {displayedFoods.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">
+                      {searchQuery ? "No foods found" : "No foods available"}
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-foreground">{food.calories}</p>
-                    <p className="text-xs text-muted-foreground">cal</p>
-                  </div>
-                </button>
-              ))}
-            </div>
+                ) : (
+                  displayedFoods.map((food) => (
+                    <button
+                      key={food.id}
+                      onClick={() => handleSelectFood(food)}
+                      className="w-full p-4 bg-card border border-border rounded-2xl flex items-center justify-between hover:border-primary/50 transition-colors text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground truncate">{food.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {food.unit_size_description}
+                        </p>
+                        <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                          <span>P: {food.protein_g}g</span>
+                          <span>C: {food.carbs_g}g</span>
+                          <span>F: {food.fats_g}g</span>
+                        </div>
+                      </div>
+                      <div className="text-right ml-4">
+                        <p className="font-semibold text-foreground">{food.calories_per_unit}</p>
+                        <p className="text-xs text-muted-foreground">cal/{food.unit_type}</p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -205,30 +280,95 @@ export function AddFoodScreen() {
                 </button>
               ))}
             </div>
-
-            {/* Portion Sizes */}
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Or select a portion size</p>
-              <div className="flex flex-wrap gap-2">
-                {portionSizes.map((portion) => (
-                  <button
-                    key={portion}
-                    onClick={() => setSelectedPortion(selectedPortion === portion ? null : portion)}
-                    className={cn(
-                      "px-4 py-2.5 rounded-xl text-sm font-medium transition-colors",
-                      selectedPortion === portion
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-card border border-border text-foreground hover:border-primary/50"
-                    )}
-                  >
-                    {portion}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         )}
       </div>
+
+      {/* Food Detail Modal */}
+      {selectedFood && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+          <div
+            className="w-full max-w-md bg-background rounded-t-3xl p-6 pb-8 animate-in slide-in-from-bottom duration-300"
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <h3 className="text-xl font-bold text-foreground">{selectedFood.name}</h3>
+                <p className="text-sm text-muted-foreground">{selectedFood.unit_size_description}</p>
+              </div>
+              <button
+                onClick={handleCloseModal}
+                className="p-2 -mr-2 text-muted-foreground hover:text-foreground rounded-xl"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Nutrition Info */}
+            <div className="grid grid-cols-4 gap-3 mb-6">
+              <div className="p-3 bg-muted rounded-xl text-center">
+                <p className="text-lg font-bold text-foreground">{selectedFood.calories_per_unit * quantity}</p>
+                <p className="text-xs text-muted-foreground">Calories</p>
+              </div>
+              <div className="p-3 bg-muted rounded-xl text-center">
+                <p className="text-lg font-bold text-foreground">{(selectedFood.protein_g * quantity).toFixed(1)}</p>
+                <p className="text-xs text-muted-foreground">Protein</p>
+              </div>
+              <div className="p-3 bg-muted rounded-xl text-center">
+                <p className="text-lg font-bold text-foreground">{(selectedFood.carbs_g * quantity).toFixed(1)}</p>
+                <p className="text-xs text-muted-foreground">Carbs</p>
+              </div>
+              <div className="p-3 bg-muted rounded-xl text-center">
+                <p className="text-lg font-bold text-foreground">{(selectedFood.fats_g * quantity).toFixed(1)}</p>
+                <p className="text-xs text-muted-foreground">Fat</p>
+              </div>
+            </div>
+
+            {/* Quantity Selector */}
+            <div className="mb-6">
+              <p className="text-sm text-muted-foreground mb-3">Quantity ({selectedFood.unit_type})</p>
+              <div className="flex items-center justify-center gap-6">
+                <button
+                  onClick={() => setQuantity(Math.max(0.5, quantity - 0.5))}
+                  className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors"
+                >
+                  <Minus className="w-5 h-5" />
+                </button>
+                <span className="text-3xl font-bold text-foreground min-w-[60px] text-center">
+                  {quantity}
+                </span>
+                <button
+                  onClick={() => setQuantity(quantity + 0.5)}
+                  className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Add Button */}
+            <button
+              onClick={() => handleAddFood(selectedFood)}
+              disabled={isAddingMeal}
+              className={cn(
+                "w-full h-14 rounded-2xl font-semibold text-lg transition-all flex items-center justify-center gap-2",
+                isAddingMeal
+                  ? "bg-primary/50 text-primary-foreground/50 cursor-not-allowed"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.98]"
+              )}
+            >
+              {isAddingMeal ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                `Add to ${mealLabels[selectedMeal]}`
+              )}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

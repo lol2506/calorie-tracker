@@ -1,17 +1,37 @@
 "use client";
 
+import { useEffect } from "react";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { Plus, Coffee, Sun, Cookie, Moon } from "lucide-react";
+import { Plus, Coffee, Sun, Cookie, Moon, Trash2, Loader2 } from "lucide-react";
 import { BottomNavigation } from "@/components/ui/bottom-navigation";
 import { CalorieRing } from "@/components/ui/calorie-ring";
 import { AnimatedDotsBackground } from "@/components/ui/animated-dots-background";
 
 export function HomeScreen() {
-  const { profile, todayEntries, setScreen, setSelectedMeal } = useAppStore();
-  
-  const dailyTarget = profile?.dailyCalorieTarget || 2000;
-  const consumed = todayEntries.reduce((sum, entry) => sum + entry.calories, 0);
+  const {
+    profile,
+    backendProfile,
+    todayEntries,
+    todayStats,
+    setScreen,
+    setSelectedMeal,
+    removeFoodEntry,
+    fetchTodayData,
+    isAuthenticated,
+    isLoading,
+  } = useAppStore();
+
+  // Fetch today's data on mount
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchTodayData();
+    }
+  }, [isAuthenticated, fetchTodayData]);
+
+  // Use backend stats if available, otherwise calculate from local entries
+  const dailyTarget = todayStats?.daily_goal || backendProfile?.daily_calorie_goal || profile?.dailyCalorieTarget || 2000;
+  const consumed = todayStats?.total_calories || todayEntries.reduce((sum, entry) => sum + entry.calories, 0);
   const remaining = Math.max(0, dailyTarget - consumed);
   const progress = Math.min(1, consumed / dailyTarget);
 
@@ -37,17 +57,22 @@ export function HomeScreen() {
     setScreen("add-food");
   };
 
+  const handleRemoveEntry = (entryId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    removeFoodEntry(entryId);
+  };
+
   const today = new Date();
-  const formattedDate = today.toLocaleDateString("en-US", { 
-    weekday: "long", 
-    month: "short", 
-    day: "numeric" 
+  const formattedDate = today.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric"
   });
 
   return (
     <div className="flex flex-col min-h-screen pb-24 relative">
       <AnimatedDotsBackground />
-      
+
       {/* Header */}
       <header className="px-6 pt-12 pb-6 relative z-10">
         <p className="text-whisper">{formattedDate}</p>
@@ -64,7 +89,7 @@ export function HomeScreen() {
                 {remaining.toLocaleString()}
               </p>
               <p className="text-quiet text-sm mt-1">calories</p>
-              
+
               <div className="flex items-center gap-4 mt-5 text-sm">
                 <div>
                   <span className="text-whisper">Goal </span>
@@ -73,20 +98,37 @@ export function HomeScreen() {
                 <div className="w-px h-4 bg-border/50" />
                 <div>
                   <span className="text-whisper">Eaten </span>
-                  <span className="text-quiet font-medium">{consumed.toLocaleString()}</span>
+                  <span className="text-quiet font-medium">{Math.round(consumed).toLocaleString()}</span>
                 </div>
               </div>
+
+              {/* Macros from backend stats */}
+              {todayStats && (
+                <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
+                  <span>P: {Math.round(todayStats.total_protein)}g</span>
+                  <span>C: {Math.round(todayStats.total_carbs)}g</span>
+                  <span>F: {Math.round(todayStats.total_fats)}g</span>
+                </div>
+              )}
             </div>
-            
-            <CalorieRing progress={progress} consumed={consumed} />
+
+            <CalorieRing progress={progress} consumed={Math.round(consumed)} />
           </div>
         </div>
       </div>
 
+      {/* Loading Indicator */}
+      {isLoading && (
+        <div className="px-6 pb-4 relative z-10 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 text-primary animate-spin mr-2" />
+          <span className="text-sm text-muted-foreground">Syncing...</span>
+        </div>
+      )}
+
       {/* Meal Cards */}
       <div className="px-6 space-y-3 relative z-10">
         <h2 className="text-lg font-semibold text-foreground mb-4">Meals</h2>
-        
+
         {meals.map((meal) => {
           const calories = getMealCalories(meal.id);
           const entries = getMealEntries(meal.id);
@@ -101,11 +143,11 @@ export function HomeScreen() {
                 <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center shrink-0">
                   <Icon className="w-6 h-6 text-muted-foreground" />
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-foreground">{meal.label}</p>
                   <p className="text-whisper text-sm">
-                    {calories > 0 ? `${calories} cal` : meal.time}
+                    {calories > 0 ? `${Math.round(calories)} cal` : meal.time}
                   </p>
                 </div>
 
@@ -126,12 +168,23 @@ export function HomeScreen() {
               {entries.length > 0 && (
                 <div className="border-t border-border/40 px-4 py-3 space-y-2">
                   {entries.map((entry) => (
-                    <div key={entry.id} className="flex items-center justify-between text-sm">
-                      <span className="text-quiet truncate mr-2">
+                    <div key={entry.id} className="flex items-center justify-between text-sm group">
+                      <span className="text-quiet truncate mr-2 flex-1">
                         {entry.name}
                         {entry.portion && <span className="text-whisper"> ({entry.portion})</span>}
                       </span>
-                      <span className="text-foreground/80 font-medium shrink-0">{entry.calories} cal</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-foreground/80 font-medium shrink-0">
+                          {Math.round(entry.calories)} cal
+                        </span>
+                        <button
+                          onClick={(e) => handleRemoveEntry(entry.id, e)}
+                          className="p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Remove entry"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

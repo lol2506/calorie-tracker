@@ -3,21 +3,22 @@
 import { useAppStore } from "@/lib/store";
 import { BottomNavigation } from "@/components/ui/bottom-navigation";
 import { cn } from "@/lib/utils";
-import { 
-  User, 
-  Target, 
-  Scale, 
+import {
+  User,
+  Target,
+  Scale,
   Activity,
   Settings,
   HelpCircle,
   Bell,
   Moon,
   ChevronRight,
-  LogOut
+  LogOut,
+  Mail
 } from "lucide-react";
 
 export function ProfileScreen() {
-  const { profile, setScreen } = useAppStore();
+  const { profile, backendProfile, userEmail, logout, setScreen } = useAppStore();
 
   const goalLabels = {
     lose: "Lose Weight",
@@ -33,6 +34,9 @@ export function ProfileScreen() {
     "very-active": "Very Active",
   };
 
+  // Use backend daily goal if available, otherwise use local profile
+  const dailyGoal = backendProfile?.daily_calorie_goal || profile?.dailyCalorieTarget || 2000;
+
   const profileStats = [
     {
       icon: Scale,
@@ -42,7 +46,7 @@ export function ProfileScreen() {
     {
       icon: Target,
       label: "Daily Goal",
-      value: profile?.dailyCalorieTarget ? `${profile.dailyCalorieTarget} cal` : "2000 cal",
+      value: `${dailyGoal} cal`,
     },
     {
       icon: Activity,
@@ -76,19 +80,19 @@ export function ProfileScreen() {
           icon: Bell,
           label: "Notifications",
           description: "Meal reminders",
-          action: () => {},
+          action: () => { },
         },
         {
           icon: Moon,
           label: "Appearance",
           description: "Dark mode",
-          action: () => {},
+          action: () => { },
         },
         {
           icon: Settings,
           label: "Units",
           description: "Metric (kg, cm)",
-          action: () => {},
+          action: () => { },
         },
       ],
     },
@@ -99,11 +103,15 @@ export function ProfileScreen() {
           icon: HelpCircle,
           label: "Help & FAQ",
           description: "Get answers",
-          action: () => {},
+          action: () => { },
         },
       ],
     },
   ];
+
+  const handleLogout = () => {
+    logout();
+  };
 
   return (
     <div className="flex flex-col min-h-screen pb-24">
@@ -119,9 +127,15 @@ export function ProfileScreen() {
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
               <User className="w-8 h-8 text-primary" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold text-foreground">Your Profile</h2>
-              <p className="text-sm text-muted-foreground">
+              {userEmail && (
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
+                  <Mail className="w-3.5 h-3.5" />
+                  <span className="truncate">{userEmail}</span>
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground mt-0.5">
                 {profile?.goal ? goalLabels[profile.goal] : "Set up your goals"}
               </p>
             </div>
@@ -179,17 +193,17 @@ export function ProfileScreen() {
           </div>
         ))}
 
-        {/* Reset Button */}
+        {/* Logout Button */}
         <button
-          onClick={() => setScreen("onboarding")}
+          onClick={handleLogout}
           className="w-full p-4 bg-card rounded-2xl border border-border flex items-center gap-4 text-left hover:border-destructive/50 transition-colors"
         >
           <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
             <LogOut className="w-5 h-5 text-destructive" />
           </div>
           <div className="flex-1">
-            <p className="font-medium text-destructive">Reset App</p>
-            <p className="text-sm text-muted-foreground">Start fresh with new goals</p>
+            <p className="font-medium text-destructive">Sign Out</p>
+            <p className="text-sm text-muted-foreground">Log out of your account</p>
           </div>
         </button>
       </div>
