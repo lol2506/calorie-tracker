@@ -28,8 +28,18 @@ def get_current_user(
         )
     
     # Get user ID from token
-    user_id: int = payload.get("sub")
-    if user_id is None:
+    user_id_raw = payload.get("sub")
+    if user_id_raw is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Convert to int if needed (JWT may store as string or int)
+    try:
+        user_id = int(user_id_raw)
+    except (ValueError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
