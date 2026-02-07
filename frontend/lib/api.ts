@@ -138,8 +138,12 @@ async function apiRequest<T>(
             errorMessage = "Server error. The backend may have a database issue. Please try again later.";
         } else if (response.status === 401) {
             errorMessage = "Invalid email or password.";
-        } else if (response.status === 400 && errorMessage.includes("already registered")) {
-            errorMessage = "This email is already registered. Please login instead.";
+        } else if (response.status === 400) {
+            // Check for various "already registered" patterns
+            const lowerError = errorMessage.toLowerCase();
+            if (lowerError.includes("already") || lowerError.includes("registered") || lowerError.includes("exists")) {
+                errorMessage = "This email is already registered. Please login instead.";
+            }
         }
 
         const error: ApiError = {
